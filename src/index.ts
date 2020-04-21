@@ -11,4 +11,13 @@ const exporter: DownloadInfoExporter = new DownloadInfoExporter();
 const targetDir: string = './dist';
 
 // * Usage:
-console.log(exporter.exportForDirectory(targetDir));
+exporter.exportForDirectory(targetDir)
+.then(
+  (result) => {
+    console.log(result);
+  },
+  (reason) => {
+    console.log(reason);
+  }
+);
+setTimeout(() => {console.log('timeout')}, 0);

@@ -35,7 +35,7 @@ export interface DownloadInfoCollection {
 }
 
 export interface FileInfoExporter {
-  exportForDirectory(dirPath:string): string
+  exportForDirectory(dirPath:string): Promise<string>
 }
 
 /**
@@ -51,12 +51,30 @@ class DownloadInfoExporter implements FileInfoExporter {
   }
 
   /**
-   * Ensures the withFileTypes option is true when reading directories.
+   * Ensures the withFileTypes option is true when sychronously reading directories.
    * 
    * @param dirPath Path to directory
    */
   private readdirSyncWithTypes(dirPath: string): Dirent[] {
     return fs.readdirSync(dirPath, { withFileTypes: true })
+  }
+ 
+  /**
+   * Ensures the withFileTypes option is true when reading directories.
+   * 
+   * @param dirPath Path to directory
+   * @returns Promise
+   */
+  private readdirWithTypes(dirPath: string): Promise<Dirent[]> {
+    return new Promise((resolve, reject) => {
+      fs.readdir(dirPath, { withFileTypes: true }, (error, files) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(files);
+        }
+      })
+    });
   }
 
   /**
@@ -87,46 +105,47 @@ class DownloadInfoExporter implements FileInfoExporter {
    * by fs.readdirSync (with fileTypes)
    * @returns DownloadInfo[]
    */
-  private readDirContentsRecursive = (dirPath: string, files: Dirent[]): DownloadInfo[] => {
-    // * local values
-    let // * the array collecting the DownloadInfo items
-      dlFiles: DownloadInfo[],
-      // * contents of the current Dirent if it is a directory
-      subDirContents: DownloadInfo[],
-      // * File info object, written if the current Dirent is not a directory
-      dlInfo: DownloadInfo,
-      // * slice of the files Array minus the current item
-      nextFiles: DownloadInfo[],
-      // * the passed dirPath + current file's name, either written to the 
-      // * path property of dlInfo or passed as dirPath to the next recursion
-      // * of this function
-      newPath: string;
+  private async readDirContentsRecursive(dirPath: string, files: Dirent[]): Promise<DownloadInfo[]> {
 
-    dlFiles = [];
-
-    // * Proceed only if there are files to processed, 
-    // * otherwise return the empty dlFiles Array
-    if (files.length > 0) {
-      // * Set path relative to the root directory for the first file
-      newPath = path.join(dirPath, files[0].name);
-
-      if (files[0].isDirectory()) {
-        // * If the first file is a directory, call a recursion and spread the 
-        // * resulting array into the local dlFiles Array
-        subDirContents = this.readDirContentsRecursive(newPath, this.readdirSyncWithTypes(newPath));
-        dlFiles = [...dlFiles, ...subDirContents];
-      } else {
-        // * Store a DownloadInfo object for anything that's not a directory
-        dlInfo = this.createDownloadInfo(newPath);
-        dlFiles = [...dlFiles, dlInfo];
+      // * local values
+      let // * the array collecting the DownloadInfo items
+        dlFiles: DownloadInfo[],
+        // * contents of the current Dirent if it is a directory
+        subDirContents: DownloadInfo[],
+        // * File info object, written if the current Dirent is not a directory
+        dlInfo: DownloadInfo,
+        // * slice of the files Array minus the current item
+        nextFiles: DownloadInfo[],
+        // * the passed dirPath + current file's name, either written to the 
+        // * path property of dlInfo or passed as dirPath to the next recursion
+        // * of this function
+        newPath: string;
+  
+      dlFiles = [];
+  
+      // * Proceed only if there are files to processed, 
+      // * otherwise return the empty dlFiles Array
+      if (files.length > 0) {
+        // * Set path relative to the root directory for the first file
+        newPath = path.join(dirPath, files[0].name);
+  
+        if (files[0].isDirectory()) {
+          // * If the first file is a directory, call a recursion and spread the 
+          // * resulting array into the local dlFiles Array
+          subDirContents = await this.readDirContentsRecursive(newPath, await this.readdirWithTypes(newPath));
+          dlFiles = [...dlFiles, ...subDirContents];
+        } else {
+          // * Store a DownloadInfo object for anything that's not a directory
+          dlInfo = this.createDownloadInfo(newPath);
+          dlFiles = [...dlFiles, dlInfo];
+        }
+        // * Remove the processed Dirent and call a recursion on the remaining list
+        files = files.slice(1);
+        nextFiles = await this.readDirContentsRecursive(dirPath, files);
+        dlFiles = [...dlFiles, ...nextFiles]
       }
-      // * Remove the processed Dirent and call a recursion on the remaining list
-      files = files.slice(1);
-      nextFiles = this.readDirContentsRecursive(dirPath, files);
-      dlFiles = [...dlFiles, ...nextFiles]
-    }
-
-    return dlFiles;
+  
+      return dlFiles;
   }
 
   /**
@@ -135,15 +154,27 @@ class DownloadInfoExporter implements FileInfoExporter {
    * 
    * @param dirPath 
    */
-  exportForDirectory(dirPath: string): string {
+  exportForDirectory(dirPath: string): Promise<string> {
 
-    const rootContents: Dirent[] = this.readdirSyncWithTypes(dirPath);
+    return new Promise(async (resolve,reject) => {
+      
+      const rootContents: Dirent[] = this.readdirSyncWithTypes(dirPath);
+  
+      let exportData: DownloadInfoCollection 
+      
+      this.readDirContentsRecursive(dirPath, rootContents)
+      .then(
+        (results) => {
+          exportData = {
+            files: results
+          };
+          resolve(JSON.stringify(exportData));
+        }
+      );
 
-    const exportData: DownloadInfoCollection = {
-      files: this.readDirContentsRecursive(dirPath, rootContents)
-    };
-
-    return JSON.stringify(exportData);
+      // setTimeout(()=>{resolve('123')}, 50);
+      
+    });
   }
 
 }
