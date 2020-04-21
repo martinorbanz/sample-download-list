@@ -171,8 +171,6 @@ class DownloadInfoExporter implements FileInfoExporter {
           resolve(JSON.stringify(exportData));
         }
       );
-
-      // setTimeout(()=>{resolve('123')}, 50);
       
     });
   }

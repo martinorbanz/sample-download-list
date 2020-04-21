@@ -20,4 +20,5 @@ exporter.exportForDirectory(targetDir)
     console.log(reason);
   }
 );
+// * timeout to demonstrate async execution
 setTimeout(() => {console.log('timeout')}, 0);
